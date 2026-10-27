@@ -369,13 +369,18 @@ function bindInput() {
   canvas.addEventListener("mousedown", (e) => {
     if (game.onTitle || game.touch) return;
     if (game.dead) return respawn();
-    if (document.pointerLockElement !== canvas) { canvas.requestPointerLock?.(); return; }
+    if (document.pointerLockElement !== canvas) { lockPointer(); return; }
     if (e.button === 0) game.firing = true;
   });
   addEventListener("mouseup", () => { if (!game.touch) game.firing = false; });
   addEventListener("mousemove", (e) => { if (document.pointerLockElement === canvas) game.turn += e.movementX * 0.0028 * CFG.player.mouseSensitivity; });
   canvas.addEventListener("wheel", (e) => { if (!game.onTitle) { e.preventDefault(); nextWeapon(); } }, { passive: false });
   addEventListener("resize", () => { resize(); resizeRenderer(); });
+}
+
+// Captura el ratolí per girar movent-lo (alguns navegadors no ho deixen: llavors es gira amb les fletxes)
+function lockPointer() {
+  try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch { /* sense captura del ratolí */ }
 }
 
 // Pantalla tàctil: joystick a l'esquerra per caminar, arrossegar a la dreta per girar
@@ -445,7 +450,7 @@ function initTitle() {
     saveGame();
     net.sendLook();
     if (music.on) startMusic();
-    if (!game.touch) canvas.requestPointerLock?.();
+    if (!game.touch) lockPointer();
     message(`Benvingut/da a Sant Andreu, ${state.look.name}. Compte de nit…`);
   };
   document.getElementById("title-go").addEventListener("click", go);
