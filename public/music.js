@@ -71,7 +71,7 @@ const SONGS = [
     chords: ["Dm", "Bb", "Gm", "A", "Dm", "Edim", "Gm", "A"],
   },
   { // 7 · Infern al barri: riff de guitarra en mi menor, ràpid i amb bateria de marxa (composició pròpia)
-    bpm: 168, steps: 8, lead: "arp", leadVol: 0.42, arpWave: "square", arp: 2, arpUp: 0, drums: "march",
+    bpm: 168, steps: 8, lead: "arp", leadVol: 0.42, arpWave: "half", arp: 2, arpUp: 0, drums: "march",
     bars: [
       "E4 E4 E5 E4 E4 D5 E4 E4", "C5 E4 E4 B4 E4 E4 Bb4 A4", "E4 E4 E5 E4 E4 D5 E4 E4", "C5 . B4 . A4 G4 A4 B4",
       "G4 G4 G5 G4 G4 F5 G4 G4", "E5 G4 G4 D5 G4 G4 C#5 C5", "E4 E4 E5 E4 E4 D5 E4 E4", "B4 . A4 . G4 . E4 .",
