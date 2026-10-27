@@ -1,0 +1,283 @@
+// Servidor multijugador d'Infern a Sant Andreu: una sala única (Durable Object) que
+// reenvia posicions i aspecte dels avatars a tots els connectats via WebSocket.
+// També gestiona les monedes compartides: n'apareix una cada 5 s en un lloc accessible
+// (fins a 50 alhora) i quan algú l'agafa desapareix per a tothom.
+import { DurableObject } from "cloudflare:workers";
+import SPAWNS from "./spawns.json"; // tiles caminables dins del barri (generats per build_map.py)
+
+const ROOM_NAME = "sant-andreu";
+const MAX_PLAYERS = 150;
+const MAX_MSG = 1024;
+const SAY_COOLDOWN_MS = 1000;
+// Valors per defecte; els de veritat es llegeixen del config.json publicat (vegeu getConfig)
+const DEFAULT_CFG = { maxSay: 30, maxCoins: 50, coinEveryMs: 5000 };
+const CONFIG_TTL_MS = 60_000;
+const TS = 16;              // píxels per tile al client
+const PICK_RADIUS = 3;      // tiles de marge (latència) per validar que el jugador és a prop
+const LOG_MAX = 500;         // entrades del registre de connexions que es guarden (per a l'admin)
+const ALLOWED_ORIGINS = [/^https:\/\/realbluehead\.github\.io$/, /^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/];
+
+const COLOR = /^#[0-9a-f]{6}$/i;
+const LOOK_ENUMS = {
+  hairStyle: ["short", "long", "ponytail", "afro", "bald"],
+  bottom: ["pants", "shorts", "skirt"],
+  extra: ["none", "cap", "glasses"],
+};
+const LOOK_COLORS = ["skin", "hair", "shirt", "pants", "shoes", "extraColor"];
+const DIRS = ["down", "up", "left", "right"];
+
+function cleanLook(l) {
+  if (!l || typeof l !== "object") return null;
+  const out = { name: String(l.name ?? "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 16) || "Jugador" };
+  for (const k of LOOK_COLORS) out[k] = COLOR.test(l[k]) ? l[k] : "#888888";
+  for (const [k, vals] of Object.entries(LOOK_ENUMS)) out[k] = vals.includes(l[k]) ? l[k] : vals[0];
+  const level = Math.floor(Number(l.level)); // nivell de les missions (es mostra al costat del nom)
+  if (level >= 1 && level <= 100) out.level = level;
+  return out;
+}
+const num = (v) => (Number.isFinite(v) ? Math.round(v * 10) / 10 : 0);
+function cleanPos(m) {
+  // room = sala on és el jugador ("" = carrer, "bar-12" = dins d'un bar)
+  const room = typeof m.room === "string" ? m.room.slice(0, 24).replace(/[^a-z0-9-]/g, "") : "";
+  return { x: num(m.x), y: num(m.y), dir: DIRS.includes(m.dir) ? m.dir : "down", moving: !!m.moving, bike: !!m.bike, room };
+}
+
+// Verifica un ID token de Google (inici de sessió) amb l'endpoint oficial de Google
+async function verifyGoogle(token, clientId) {
+  if (!clientId || typeof token !== "string" || token.length > 4096) return null;
+  try {
+    const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(token)}`);
+    if (!r.ok) return null;
+    const t = await r.json();
+    const issOk = t.iss === "accounts.google.com" || t.iss === "https://accounts.google.com";
+    if (t.aud !== clientId || !issOk || Number(t.exp) * 1000 < Date.now() || !t.sub) return null;
+    return { sub: t.sub, email: t.email_verified === "true" || t.email_verified === true ? t.email : "", name: t.given_name || t.name || "Jugador" };
+  } catch { return null; }
+}
+
+// DESACTIVAT de moment: avís per correu de nous registres. Per activar-lo, descomenta aquesta funció
+// i la crida a notifyNewUser més avall, i guarda la clau amb `npx wrangler secret put RESEND_API_KEY`.
+// // Avisa per correu (Resend) quan algú es registra per primer cop
+// async function notifyNewUser(env, user, total) {
+//   if (!env.RESEND_API_KEY || !env.NOTIFY_EMAIL) return;
+//   const when = new Date(user.created).toLocaleString("ca-ES", { timeZone: "Europe/Madrid" });
+//   try {
+//     await fetch("https://api.resend.com/emails", {
+//       method: "POST",
+//       headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+//       body: JSON.stringify({
+//         from: "Sant Andreu RPG <onboarding@resend.dev>",
+//         to: [env.NOTIFY_EMAIL],
+//         subject: `Nou registre a Sant Andreu RPG: ${user.name}`,
+//         text: `S'ha registrat un nou jugador a Sant Andreu RPG.\n\nNom: ${user.name}\nCorreu: ${user.email || "(no verificat)"}\nData: ${when}\n\nJugadors registrats en total: ${total}\n`,
+//       }),
+//     });
+//   } catch { /* si falla el correu, el registre continua sent vàlid */ }
+// }
+
+export class Room extends DurableObject {
+  // Llegeix config.json de GitHub Pages (com a molt un cop per minut). Així, publicar un canvi
+  // de configuració al repositori també s'aplica al servidor sense tornar-lo a desplegar.
+  async getConfig() {
+    const now = Date.now();
+    if (this.cfg && now - this.cfgAt < CONFIG_TTL_MS) return this.cfg;
+    this.cfgAt = now;
+    this.cfg = this.cfg || { ...DEFAULT_CFG };
+    try {
+      const url = this.env.CONFIG_URL;
+      if (url) {
+        const r = await fetch(`${url}?t=${Math.floor(now / CONFIG_TTL_MS)}`);
+        if (r.ok) {
+          const c = await r.json();
+          const n = (v, lo, hi, d) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+          this.cfg = {
+            maxSay: n(c.chat?.maxLength, 1, 200, DEFAULT_CFG.maxSay),
+            maxCoins: n(c.coins?.max, 0, 500, DEFAULT_CFG.maxCoins),
+            coinEveryMs: n(c.coins?.spawnEverySeconds, 1, 3600, 5) * 1000,
+          };
+        }
+      }
+    } catch { /* mantenim l'última configuració bona */ }
+    return this.cfg;
+  }
+
+  async fetch(request) {
+    if (this.ctx.getWebSockets().length >= MAX_PLAYERS) return new Response("Sala plena", { status: 503 });
+    const { 0: client, 1: server } = new WebSocketPair();
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ id: crypto.randomUUID().slice(0, 8), p: null });
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // --- Registre de connexions (es consulta des de l'admin local) ---------
+  async addLog(ev, a, extra = {}) {
+    const online = this.ctx.getWebSockets().filter((o) => o.deserializeAttachment()?.p && !o.deserializeAttachment()?.left).length;
+    const entry = { t: Date.now(), ev, id: a.id, name: a.p?.look?.name || "", online, ...extra };
+    if (a.user) entry.google = a.user.email || a.user.name;
+    this.log ||= (await this.ctx.storage.get("log")) || []; // en memòria perquè dos esdeveniments seguits no es trepitgin
+    const log = this.log;
+    log.push(entry);
+    if (log.length > LOG_MAX) log.splice(0, log.length - LOG_MAX);
+    await this.ctx.storage.put("log", log);
+  }
+  async adminLog() {
+    const now = Date.now();
+    const players = this.ctx.getWebSockets().map((o) => o.deserializeAttachment()).filter((a) => a?.p && !a.left)
+      .map((a) => ({ id: a.id, name: a.p.look.name, since: a.since || null, room: a.p.room, google: a.user ? a.user.email || a.user.name : "" }));
+    return { now, players, log: this.log || (await this.ctx.storage.get("log")) || [] };
+  }
+
+  // --- Monedes -----------------------------------------------------------
+  async loadCoins() {
+    if (this.coins) return;
+    const stored = await this.ctx.storage.get(["coins", "nextCoinId"]);
+    this.coins = stored.get("coins") || [];
+    this.nextCoinId = stored.get("nextCoinId") || 1;
+  }
+  async saveCoins() {
+    await this.ctx.storage.put({ coins: this.coins, nextCoinId: this.nextCoinId });
+  }
+  async ensureAlarm() {
+    if ((await this.ctx.storage.getAlarm()) == null) await this.ctx.storage.setAlarm(Date.now() + (await this.getConfig()).coinEveryMs);
+  }
+  // Cada 5 s, mentre hi hagi algú connectat, apareix una moneda nova
+  async alarm() {
+    const players = this.ctx.getWebSockets().filter((ws) => ws.deserializeAttachment()?.p).length;
+    if (!players) return; // ningú connectat: no tornem a programar l'alarma
+    const cfg = await this.getConfig();
+    await this.loadCoins();
+    if (this.coins.length < cfg.maxCoins) {
+      const taken = new Set(this.coins.map((c) => c.x + "," + c.y));
+      for (let i = 0; i < 20; i++) {
+        const [tx, ty] = SPAWNS[(Math.random() * SPAWNS.length) | 0];
+        const x = tx + 0.5, y = ty + 0.5;
+        if (taken.has(x + "," + y)) continue;
+        const coin = { id: this.nextCoinId++, x, y };
+        this.coins.push(coin);
+        await this.saveCoins();
+        this.broadcast({ t: "coin", c: coin });
+        break;
+      }
+    }
+    await this.ctx.storage.setAlarm(Date.now() + cfg.coinEveryMs);
+  }
+
+  broadcast(msg, except) {
+    const data = JSON.stringify(msg);
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === except) continue;
+      const a = ws.deserializeAttachment();
+      if (!a?.p) continue; // encara no ha dit hola
+      try { ws.send(data); } catch { /* connexió tancant-se */ }
+    }
+  }
+
+  async webSocketMessage(ws, raw) {
+    if (typeof raw !== "string" || raw.length > MAX_MSG) return;
+    let m;
+    try { m = JSON.parse(raw); } catch { return; }
+    const a = ws.deserializeAttachment();
+    if (m.t === "hello") {
+      const look = cleanLook(m.look);
+      if (!look) return;
+      const isNew = !a.p;
+      a.p = { id: a.id, look, ...cleanPos(m) };
+      if (isNew) a.since = Date.now();
+      ws.serializeAttachment(a);
+      if (isNew) await this.addLog("join", a);
+      const players = this.ctx.getWebSockets()
+        .filter((o) => o !== ws)
+        .map((o) => o.deserializeAttachment()?.p)
+        .filter(Boolean);
+      await this.loadCoins();
+      ws.send(JSON.stringify({ t: "welcome", id: a.id, players, coins: this.coins, maxCoins: (await this.getConfig()).maxCoins }));
+      await this.ensureAlarm();
+      this.broadcast(isNew ? { t: "join", p: a.p } : { t: "look", id: a.id, look }, ws);
+    } else if (!a.p) {
+      return;
+    } else if (m.t === "move") {
+      Object.assign(a.p, cleanPos(m));
+      ws.serializeAttachment(a);
+      this.broadcast({ t: "move", id: a.id, x: a.p.x, y: a.p.y, dir: a.p.dir, moving: a.p.moving, bike: a.p.bike, room: a.p.room }, ws);
+    } else if (m.t === "take") {
+      await this.loadCoins();
+      const i = this.coins.findIndex((c) => c.id === m.id);
+      if (i < 0) return; // algú se l'ha endut abans
+      const c = this.coins[i];
+      if (Number.isFinite(m.x) && Number.isFinite(m.y)) Object.assign(a.p, cleanPos({ ...a.p, x: m.x, y: m.y }));
+      if (Math.hypot(a.p.x / TS - c.x, a.p.y / TS - c.y) > PICK_RADIUS) return;
+      this.coins.splice(i, 1);
+      await this.saveCoins();
+      a.coins = (a.coins || 0) + 1;
+      ws.serializeAttachment(a);
+      const msg = { t: "taken", id: c.id, by: a.id };
+      ws.send(JSON.stringify(msg));
+      this.broadcast(msg, ws);
+    } else if (m.t === "auth") {
+      if (!m.token) { delete a.user; ws.serializeAttachment(a); return; } // ha tancat la sessió
+      const info = await verifyGoogle(m.token, this.env.GOOGLE_CLIENT_ID);
+      if (!info) { ws.send(JSON.stringify({ t: "auth", ok: false })); return; }
+      const key = `user:${info.sub}`;
+      let user = await this.ctx.storage.get(key);
+      const newUser = !user;
+      if (newUser) {
+        user = { name: info.name, email: info.email, created: Date.now() };
+        const total = ((await this.ctx.storage.get("userCount")) || 0) + 1;
+        await this.ctx.storage.put({ [key]: user, userCount: total });
+        // await notifyNewUser(this.env, user, total); // avís per correu desactivat de moment
+      }
+      a.user = { sub: info.sub, name: info.name, email: info.email };
+      ws.serializeAttachment(a);
+      await this.addLog("auth", a, newUser ? { newUser: true } : {});
+      ws.send(JSON.stringify({ t: "auth", ok: true, name: info.name, newUser }));
+    } else if (m.t === "say") {
+      const text = String(m.text ?? "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, (await this.getConfig()).maxSay);
+      const now = Date.now();
+      if (!text || now - (a.lastSay || 0) < SAY_COOLDOWN_MS) return;
+      a.lastSay = now;
+      ws.serializeAttachment(a);
+      this.broadcast({ t: "say", id: a.id, text }, ws);
+    } else if (m.t === "look") {
+      const look = cleanLook(m.look);
+      if (!look) return;
+      a.p.look = look;
+      ws.serializeAttachment(a);
+      this.broadcast({ t: "look", id: a.id, look }, ws);
+    }
+  }
+
+  async leave(ws) {
+    const a = ws.deserializeAttachment();
+    if (!a?.p || a.left) return; // close i error poden arribar tots dos
+    a.left = true;
+    ws.serializeAttachment(a);
+    this.broadcast({ t: "leave", id: a.id }, ws);
+    await this.addLog("leave", a, { secs: a.since ? Math.round((Date.now() - a.since) / 1000) : null });
+  }
+  async webSocketClose(ws, code) {
+    await this.leave(ws);
+    try { ws.close(code, "adeu"); } catch { /* ja tancat */ }
+  }
+  async webSocketError(ws) {
+    await this.leave(ws);
+  }
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname === "/ws") {
+      if (request.headers.get("Upgrade") !== "websocket") return new Response("Cal WebSocket", { status: 426 });
+      const origin = request.headers.get("Origin") || "";
+      if (!ALLOWED_ORIGINS.some((re) => re.test(origin))) return new Response("Origen no permès", { status: 403 });
+      return env.ROOM.get(env.ROOM.idFromName(ROOM_NAME)).fetch(request);
+    }
+    // Registre de connexions per a l'admin local (cal el secret ADMIN_TOKEN)
+    if (url.pathname === "/admin/log") {
+      const auth = request.headers.get("Authorization") || "";
+      if (!env.ADMIN_TOKEN || auth !== `Bearer ${env.ADMIN_TOKEN}`) return new Response("No autoritzat", { status: 401 });
+      return Response.json(await env.ROOM.get(env.ROOM.idFromName(ROOM_NAME)).adminLog()); // crida RPC al Durable Object
+    }
+    return new Response("Infern a Sant Andreu — servidor multijugador", { headers: { "content-type": "text/plain; charset=utf-8" } });
+  },
+};

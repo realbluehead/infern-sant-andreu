@@ -1,0 +1,22 @@
+name = "infern-sant-andreu"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+# Els Durable Objects amb SQLite són els que inclou el pla gratuït
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+# config.json publicat a GitHub Pages (per a desenvolupament local, sobreescriu-ho a .dev.vars)
+[vars]
+CONFIG_URL = "https://realbluehead.github.io/infern-sant-andreu/config.json"
+# Inici de sessió amb Google: el mateix Client ID que public/config.json (auth.googleClientId)
+GOOGLE_CLIENT_ID = "191935334253-espbqq5ue0aqtct0up6op8u3q8gikph3.apps.googleusercontent.com"
+# Avís per correu de nous registres: DESACTIVAT de moment (vegeu notifyNewUser a src/index.js).
+# Per activar-lo, descomenta la línia següent i guarda la clau de Resend com a secret:
+#   npx wrangler secret put RESEND_API_KEY
+# NOTIFY_EMAIL = "realbluehead@gmail.com"

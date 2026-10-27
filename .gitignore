@@ -1,0 +1,6 @@
+.DS_Store
+__pycache__/
+*.pyc
+.claude/
+admin/.admin-token
+tests/node_modules/

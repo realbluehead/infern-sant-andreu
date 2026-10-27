@@ -1,0 +1,40 @@
+{
+  "player": {
+    "walkSpeed": 3.2,
+    "runSpeed": 5.4,
+    "turnSpeed": 2.6,
+    "mouseSensitivity": 1,
+    "maxHp": 100
+  },
+  "monsters": {
+    "zombies": 8,
+    "demons": 3,
+    "ghosts": 4,
+    "thieves": 2,
+    "spawnMin": 12,
+    "spawnMax": 30,
+    "fireballDamage": 10
+  },
+  "night": {
+    "startHour": 20,
+    "endHour": 6,
+    "multiplier": 2.5
+  },
+  "weapons": {
+    "pistolDamage": 14,
+    "shotgunDamage": 10
+  },
+  "render": {
+    "drawDistance": 40
+  },
+  "world": {
+    "secondsPerHour": 60
+  },
+  "coins": {
+    "max": 50,
+    "spawnEverySeconds": 5
+  },
+  "chat": {
+    "maxLength": 30
+  }
+}

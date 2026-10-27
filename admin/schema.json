@@ -1,0 +1,285 @@
+{
+  "sections": [
+    {
+      "key": "player",
+      "title": "Jugador",
+      "icon": "🧍",
+      "fields": [
+        {
+          "key": "walkSpeed",
+          "label": "Velocitat caminant",
+          "type": "number",
+          "min": 1,
+          "max": 10,
+          "step": 0.1,
+          "default": 3.2,
+          "unit": "caselles/s",
+          "help": "1 casella = 2 m"
+        },
+        {
+          "key": "runSpeed",
+          "label": "Velocitat corrent",
+          "type": "number",
+          "min": 1,
+          "max": 15,
+          "step": 0.1,
+          "default": 5.4,
+          "unit": "caselles/s"
+        },
+        {
+          "key": "turnSpeed",
+          "label": "Velocitat de gir amb el teclat",
+          "type": "number",
+          "min": 0.5,
+          "max": 6,
+          "step": 0.1,
+          "default": 2.6,
+          "unit": "rad/s"
+        },
+        {
+          "key": "mouseSensitivity",
+          "label": "Sensibilitat del ratolí i del dit",
+          "type": "number",
+          "min": 0.2,
+          "max": 4,
+          "step": 0.1,
+          "default": 1,
+          "unit": "×"
+        },
+        {
+          "key": "maxHp",
+          "label": "Salut màxima",
+          "type": "int",
+          "min": 50,
+          "max": 200,
+          "step": 10,
+          "default": 100,
+          "unit": "%"
+        }
+      ]
+    },
+    {
+      "key": "monsters",
+      "title": "Monstres (de dia)",
+      "icon": "👹",
+      "fields": [
+        {
+          "key": "zombies",
+          "label": "Zombis al voltant",
+          "type": "int",
+          "min": 0,
+          "max": 40,
+          "step": 1,
+          "default": 8,
+          "unit": ""
+        },
+        {
+          "key": "demons",
+          "label": "Dimonis",
+          "type": "int",
+          "min": 0,
+          "max": 20,
+          "step": 1,
+          "default": 3,
+          "unit": ""
+        },
+        {
+          "key": "ghosts",
+          "label": "Fantasmes (només de nit)",
+          "type": "int",
+          "min": 0,
+          "max": 30,
+          "step": 1,
+          "default": 4,
+          "unit": ""
+        },
+        {
+          "key": "thieves",
+          "label": "Lladres (només de dia)",
+          "type": "int",
+          "min": 0,
+          "max": 20,
+          "step": 1,
+          "default": 2,
+          "unit": "",
+          "help": "Et roben monedes; abat-los per recuperar-les"
+        },
+        {
+          "key": "spawnMin",
+          "label": "Distància mínima d'aparició",
+          "type": "int",
+          "min": 4,
+          "max": 40,
+          "step": 1,
+          "default": 12,
+          "unit": "caselles"
+        },
+        {
+          "key": "spawnMax",
+          "label": "Distància màxima d'aparició",
+          "type": "int",
+          "min": 10,
+          "max": 80,
+          "step": 1,
+          "default": 30,
+          "unit": "caselles"
+        },
+        {
+          "key": "fireballDamage",
+          "label": "Dany de les boles de foc",
+          "type": "int",
+          "min": 1,
+          "max": 50,
+          "step": 1,
+          "default": 10,
+          "unit": "%"
+        }
+      ]
+    },
+    {
+      "key": "night",
+      "title": "Nit",
+      "icon": "🌙",
+      "fields": [
+        {
+          "key": "startHour",
+          "label": "Hora en què es fa de nit",
+          "type": "int",
+          "min": 0,
+          "max": 23,
+          "step": 1,
+          "default": 20,
+          "unit": "h"
+        },
+        {
+          "key": "endHour",
+          "label": "Hora en què es fa de dia",
+          "type": "int",
+          "min": 0,
+          "max": 23,
+          "step": 1,
+          "default": 6,
+          "unit": "h"
+        },
+        {
+          "key": "multiplier",
+          "label": "Monstres de nit",
+          "type": "number",
+          "min": 1,
+          "max": 6,
+          "step": 0.5,
+          "default": 2.5,
+          "unit": "×",
+          "help": "Quants monstres més hi ha de nit"
+        }
+      ]
+    },
+    {
+      "key": "weapons",
+      "title": "Armes",
+      "icon": "🔫",
+      "fields": [
+        {
+          "key": "pistolDamage",
+          "label": "Dany de la pistola",
+          "type": "int",
+          "min": 1,
+          "max": 60,
+          "step": 1,
+          "default": 14,
+          "unit": ""
+        },
+        {
+          "key": "shotgunDamage",
+          "label": "Dany de cada perdigó de l'escopeta",
+          "type": "int",
+          "min": 1,
+          "max": 40,
+          "step": 1,
+          "default": 10,
+          "unit": "",
+          "help": "L'escopeta en dispara 7"
+        }
+      ]
+    },
+    {
+      "key": "render",
+      "title": "Gràfics",
+      "icon": "🖥️",
+      "fields": [
+        {
+          "key": "drawDistance",
+          "label": "Distància de visió",
+          "type": "int",
+          "min": 15,
+          "max": 80,
+          "step": 1,
+          "default": 40,
+          "unit": "caselles",
+          "help": "Més distància, més lent als mòbils"
+        }
+      ]
+    },
+    {
+      "key": "world",
+      "title": "Temps",
+      "icon": "🕐",
+      "fields": [
+        {
+          "key": "secondsPerHour",
+          "label": "Segons reals per hora del joc",
+          "type": "int",
+          "min": 5,
+          "max": 600,
+          "step": 5,
+          "default": 60,
+          "unit": "s"
+        }
+      ]
+    },
+    {
+      "key": "coins",
+      "title": "Monedes compartides",
+      "icon": "🪙",
+      "fields": [
+        {
+          "key": "max",
+          "label": "Màxim de monedes alhora",
+          "type": "int",
+          "min": 0,
+          "max": 200,
+          "step": 1,
+          "default": 50,
+          "unit": ""
+        },
+        {
+          "key": "spawnEverySeconds",
+          "label": "Cada quant n'apareix una",
+          "type": "int",
+          "min": 1,
+          "max": 120,
+          "step": 1,
+          "default": 5,
+          "unit": "s"
+        }
+      ]
+    },
+    {
+      "key": "chat",
+      "title": "Xat",
+      "icon": "💬",
+      "fields": [
+        {
+          "key": "maxLength",
+          "label": "Llargada màxima d'un missatge",
+          "type": "int",
+          "min": 5,
+          "max": 120,
+          "step": 1,
+          "default": 30,
+          "unit": "lletres"
+        }
+      ]
+    }
+  ]
+}
