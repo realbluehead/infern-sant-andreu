@@ -203,13 +203,18 @@ function buildStreetGrid() {
   const B = 16, gw = Math.ceil(state.W / B), gh = Math.ceil(state.H / B);
   streetGrid = { B, gw, cells: Array.from({ length: gw * gh }, () => []) };
   for (const s of state.meta.streets) for (const line of s.lines) for (let i = 1; i < line.length; i++) {
-    const a = line[i - 1], b = line[i], n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 3);
+    const [ax, ay] = line[i - 1], [bx, by] = line[i], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 3));
     for (let k = 0; k <= n; k++) {
-      const x = a.x + (b.x - a.x) * (k / n), y = a.y + (b.y - a.y) * (k / n);
+      const x = ax + (bx - ax) * (k / n), y = ay + (by - ay) * (k / n);
       const ci = Math.floor(y / B) * gw + Math.floor(x / B);
       if (streetGrid.cells[ci]) streetGrid.cells[ci].push([x, y, s.name]);
     }
   }
+}
+// Carrer (o plaça) on ets: les places tenen prioritat si en ets a prop del centre
+function streetName(tx, ty) {
+  for (const p of state.meta.places) if (/^(Plaça|Placeta|Rambla|Passeig)/.test(p.name) && (p.x - tx) ** 2 + (p.y - ty) ** 2 < 64) return p.name;
+  return nearestStreet(tx, ty);
 }
 function nearestStreet(tx, ty) {
   const { B, gw, cells } = streetGrid;
@@ -223,14 +228,16 @@ function nearestStreet(tx, ty) {
 // ---------------------------------------------------------------------------
 // Sprites del món per a cada fotograma
 const SIGN_KIND = { pharmacy: "pharmacy", beer: "beer", coffee: "coffee", bank: "bank" };
-let decorImgs = null, signs = [];
+let decorImgs = null, signs = [], plates = [];
 function initWorldSprites() {
   decorImgs = {
     trees: THEMES.map((th) => [1, 2, 3].map((s) => makeTree(true, s * 977, th.tree))),
     pines: THEMES.map((th) => [1, 2].map((s) => makeTree(false, s * 541, th.tree))),
     lamp: makeLamp(), bench: makeBench(), fountain: makeFountain(),
     signs: Object.fromEntries(Object.keys(SIGN_KIND).map((k) => [k, makeSign(k)])),
+    plate: makeStreetPlate(),
   };
+  buildStreetPlates();
   coins.sprites = [0, 1, 2, 3].map(makeCoinFrame);
   // rètols: a la façana, mirant al carrer (la posició del local sol ser dins de l'edifici)
   for (const p of state.meta.pois || []) {
@@ -246,6 +253,44 @@ function initWorldSprites() {
     if (best) signs.push({ x: best[0] * TS + 8, y: best[1] * TS + 8, kind: p.c, name: p.n });
   }
 }
+// Plaques amb el nom del carrer a les façanes, cada ~25 caselles (50 m) al llarg de cada carrer
+function buildStreetPlates() {
+  const near = new Map(); // nom → plaques ja posades (per no amuntegar-les)
+  for (const s of state.meta.streets) {
+    const mine = near.get(s.name) || [];
+    near.set(s.name, mine);
+    for (const line of s.lines) {
+      let acc = 25;
+      for (let i = 1; i < line.length; i++) {
+        const [ax, ay] = line[i - 1], [bx, by] = line[i], len = Math.hypot(bx - ax, by - ay);
+        for (let d = 0; d < len; d += 2) {
+          if ((acc += 2) < 25) continue;
+          const x = ax + ((bx - ax) * d) / len, y = ay + ((by - ay) * d) / len;
+          if (mine.some((q) => (q[0] - x) ** 2 + (q[1] - y) ** 2 < 18 * 18)) continue;
+          const spot = plateSpot(x, y);
+          if (!spot) continue;
+          acc = 0; mine.push([x, y]);
+          plates.push({ x: spot[0], y: spot[1], name: s.name });
+        }
+      }
+    }
+  }
+}
+// Casella de carrer al costat d'una façana, a prop del punt (x, y); la placa es posa tocant la paret
+function plateSpot(x, y) {
+  let best = null, bd = 6 * 6;
+  for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) {
+    const tx = Math.round(x) + dx, ty = Math.round(y) + dy;
+    if (isBuilding(g(tx, ty)) || blocked(tx, ty)) continue;
+    for (const [nx, ny] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (!isBuilding(g(tx + nx, ty + ny))) continue;
+      const d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = [(tx + 0.5 + nx * 0.45) * TS, (ty + 0.5 + ny * 0.45) * TS]; }
+    }
+  }
+  return best;
+}
+
 function worldSprites() {
   const list = [], pl = game.player, ptx = Math.floor(pl.x / TS), pty = Math.floor(pl.y / TS), R2 = CFG.render.drawDistance;
   const ca = Math.cos(pl.a), sa = Math.sin(pl.a);
@@ -265,6 +310,10 @@ function worldSprites() {
   for (const s of signs) {
     const dx = s.x - pl.x, dy = s.y - pl.y;
     if (dx * dx + dy * dy < (30 * TS) ** 2) list.push({ x: s.x, y: s.y, img: decorImgs.signs[s.kind], h: 7, z: 1.2, bright: world.dark > 0.4, label: s.name, labelColor: "#ffd23f" });
+  }
+  for (const s of plates) {
+    const dx = s.x - pl.x, dy = s.y - pl.y;
+    if (dx * dx + dy * dy < (24 * TS) ** 2) list.push({ x: s.x, y: s.y, img: decorImgs.plate, h: 4, z: 1.55, label: s.name, labelColor: "#f4f0e4" });
   }
   const t = Date.now();
   for (const c of coins.list.values()) {
@@ -468,7 +517,7 @@ function frame(dt) {
     scatterItems(dt);
     updateCoins();
     runSystems("update", dt);
-    if ((game.streetT = (game.streetT || 0) - dt) <= 0) { game.streetT = 0.5; game.street = nearestStreet(pl.x / TS, pl.y / TS); }
+    if ((game.streetT = (game.streetT || 0) - dt) <= 0) { game.streetT = 0.5; game.street = streetName(pl.x / TS, pl.y / TS); }
   } else pl.a += dt * 0.12;
   net.update(dt);
   // càmera

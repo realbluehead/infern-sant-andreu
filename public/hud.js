@@ -89,21 +89,40 @@ function drawStatusBar() {
 function drawMessages(dt) {
   const c = R.c;
   c.font = FONT(5); c.textBaseline = "top"; c.textAlign = "left";
+  const my = game.street || game.mapOpen ? 22 : 3; // a sota de la placa del carrer (o de la capçalera del mapa)
   hud.msgs.forEach((m, i) => {
     m.t += dt;
-    c.fillStyle = "#1a0806"; c.fillText(m.text, 4, 4 + i * 8);
-    c.fillStyle = m.chat ? "#9fd3ff" : "#ffd23f"; c.fillText(m.text, 3, 3 + i * 8);
+    c.fillStyle = "#1a0806"; c.fillText(m.text, 4, my + 1 + i * 8);
+    c.fillStyle = m.chat ? "#9fd3ff" : "#ffd23f"; c.fillText(m.text, 3, my + i * 8);
   });
   hud.msgs = hud.msgs.filter((m) => m.t < (m.chat ? 10 : 4));
-  // carrer on ets, a dalt a la dreta
-  if (game.street) {
-    c.textAlign = "right"; c.fillStyle = "rgba(0,0,0,.5)"; c.fillText(game.street, R.w - 2, 4);
-    c.fillStyle = "#e8dcc0"; c.fillText(game.street, R.w - 3, 3);
-  }
+  drawStreetPlate(dt);
   // noms dels altres jugadors
   c.textAlign = "center"; c.textBaseline = "bottom";
-  for (const l of R.labels) { c.fillStyle = "#000"; c.fillText(l.text, l.x + 1, l.y + 1); c.fillStyle = l.color; c.fillText(l.text, l.x, l.y); }
+  for (const l of R.labels) {
+    const tw = c.measureText(l.text).width;
+    c.fillStyle = "rgba(10,8,14,.72)"; c.fillRect(Math.round(l.x - tw / 2 - 2), Math.round(l.y - 7), Math.ceil(tw + 4), 8);
+    c.fillStyle = l.color; c.fillText(l.text, l.x, l.y);
+  }
   c.textAlign = "left"; c.textBaseline = "alphabetic";
+}
+
+// Placa del carrer on ets, a dalt al mig, com les de marbre dels carrers de Barcelona. Quan
+// canvies de carrer, es fa més gran uns segons.
+function drawStreetPlate(dt) {
+  if (!game.street || game.mapOpen) return; // a l'automapa ja hi ha els noms
+  if (game.street !== hud.plateName) { hud.plateName = game.street; hud.plateT = 2.5; }
+  hud.plateT = Math.max(0, (hud.plateT || 0) - dt);
+  const c = R.c, big = hud.plateT > 0, fs = big ? 7 : 6;
+  c.font = FONT(fs); c.textBaseline = "middle"; c.textAlign = "center";
+  let text = game.street;
+  while (c.measureText(text).width > R.w - 20 && text.length > 6) text = text.slice(0, -2) + "…";
+  const w = Math.ceil(c.measureText(text).width) + 12, h = fs + 9, x = Math.round(R.w / 2 - w / 2), y = 3;
+  c.fillStyle = "#1a1420"; c.fillRect(x - 1, y - 1, w + 2, h + 2);
+  c.fillStyle = big ? "#fff8e6" : "#e8e2d2"; c.fillRect(x, y, w, h);
+  c.strokeStyle = "#8a8070"; c.lineWidth = 1; c.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+  c.fillStyle = "#1f2a5a"; c.fillText(text, R.w / 2, y + h / 2 + 1);
+  c.textAlign = "left"; c.textBaseline = "top";
 }
 
 // Vermell quan et fan mal, groc quan reculls alguna cosa
@@ -157,6 +176,25 @@ function drawAutomap() {
   c.strokeStyle = "#c8a030"; c.lineWidth = 1; c.beginPath();
   for (const ring of state.meta.boundary) ring.forEach(([x, y], i) => i ? c.lineTo(sx(x), sy(y)) : c.moveTo(sx(x), sy(y)));
   c.stroke();
+  // noms dels carrers (un per carrer, al punt més proper al centre de la vista que hi càpiga)
+  c.font = FONT(4); c.textAlign = "center"; c.textBaseline = "middle";
+  const placed = [];
+  for (const st of state.meta.streets) {
+    let best = null, bd = Infinity;
+    for (const line of st.lines) for (const [px, py] of line) {
+      const d = (px - cxT) ** 2 + (py - cyT) ** 2;
+      if (d < bd) { bd = d; best = [px, py]; }
+    }
+    if (!best) continue;
+    const lx = sx(best[0]), ly = sy(best[1]), tw = c.measureText(st.name).width;
+    if (lx < tw / 2 || lx > w - tw / 2 || ly < 12 || ly > h - 6) continue;
+    const r = [lx - tw / 2 - 2, ly - 4, tw + 4, 8];
+    if (placed.some((q) => r[0] < q[0] + q[2] && r[0] + r[2] > q[0] && r[1] < q[1] + q[3] && r[1] + r[3] > q[1])) continue;
+    placed.push(r);
+    c.fillStyle = "rgba(0,0,0,.7)"; c.fillRect(...r);
+    c.fillStyle = "#e8d8a0"; c.fillText(st.name, lx, ly + 0.5);
+  }
+  c.textAlign = "left"; c.textBaseline = "alphabetic";
   for (const o of net.others.values()) { c.fillStyle = "#4ade80"; c.fillRect(sx(o.x / TS) - 1, sy(o.y / TS) - 1, 3, 3); }
   for (const cn of coinsList()) { c.fillStyle = "#ffd23f"; c.fillRect(sx(cn.x) - 0.5, sy(cn.y) - 0.5, 1.5, 1.5); }
   // jugador

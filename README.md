@@ -23,7 +23,8 @@ Al mòbil: joystick a l'esquerra per caminar, arrossega la pantalla per girar, i
 - **Monstres**: zombis, dimonis que llancen boles de foc, fantasmes (de nit) i lladres que et pispen monedes (abat-los per recuperar-les). Apareixen al teu voltant, fora de la vista. **De 20 a 6 h** n'hi ha molts més i la música canvia.
 - **Objectes**: caixes de bales, cartutxos, farmacioles, armilles i l'escopeta. Els monstres també en deixen quan cauen. Les **farmàcies** del barri et curen si t'hi acostes.
 - **Monedes**: les mateixes per a tothom (les crea el servidor). Si mors, en perds la meitat.
-- **Multijugador**: veus els altres jugadors pel carrer i pots xatejar. Al marcador, de dalt a la dreta, surt el carrer on ets.
+- **Carrers**: a dalt de la pantalla hi ha una placa amb el nom del carrer o la plaça on ets (es fa gran quan hi entres), a les façanes hi ha plaques amb el nom del carrer cada uns 50 m, i l'automapa també els mostra.
+- **Multijugador**: veus els altres jugadors pel carrer i pots xatejar.
 - El rellotge és el mateix per a tothom: **1 minut = 1 hora**. També plou, hi ha boira i neva.
 
 ## Com està fet

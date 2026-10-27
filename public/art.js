@@ -187,3 +187,13 @@ function makeSign(kind) {
   p.outline(C8.ink);
   return p.toCanvas();
 }
+
+// Placa de carrer de marbre (el nom s'escriu a sobre en dibuixar-la)
+function makeStreetPlate() {
+  const p = new Pix(20, 8);
+  p.rect(0, 0, 20, 8, P("#e8e2d2")); p.rect(1, 1, 18, 6, P("#f4f0e4"));
+  for (let x = 3; x < 17; x += 2) p.set(x, 4, P("#1f2a5a")); // lletres petites
+  p.rect(3, 3, 14, 1, P("#3a4a7a"));
+  p.outline(C8.ink);
+  return p.toCanvas();
+}
